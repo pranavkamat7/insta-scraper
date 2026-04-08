@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 
 const ACTOR_ID = "apify~instagram-scraper";
 const APIFY_KEY = import.meta.env.VITE_APIFY_KEY;
+console.log(import.meta.env.VITE_APIFY_KEY);
 
 function fmt(n) {
   if (!n && n !== 0) return "—";
