@@ -3,7 +3,6 @@ import * as XLSX from "xlsx";
 
 const ACTOR_ID = "apify~instagram-scraper";
 const APIFY_KEY = import.meta.env.VITE_APIFY_KEY;
-console.log(import.meta.env.VITE_APIFY_KEY);
 
 function fmt(n) {
   if (!n && n !== 0) return "—";
@@ -14,6 +13,14 @@ function fmt(n) {
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function normalizeUsername(value = "") {
+  return value.trim().replace("@", "").toLowerCase();
+}
+
+function getItemUsername(item) {
+  return normalizeUsername(item?.ownerUsername || item?.username || "");
 }
 
 const styles = `
@@ -51,7 +58,6 @@ const styles = `
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Grid bg */
   body::before {
     content: '';
     position: fixed;
@@ -72,7 +78,6 @@ const styles = `
     padding: 56px 24px 80px;
   }
 
-  /* ── HEADER ── */
   .header {
     margin-bottom: 44px;
   }
@@ -129,7 +134,6 @@ const styles = `
     font-weight: 400;
   }
 
-  /* ── CARD ── */
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -148,7 +152,6 @@ const styles = `
     background: linear-gradient(90deg, transparent, rgba(99,120,255,0.4), transparent);
   }
 
-  /* ── FORM ── */
   .form-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -203,7 +206,6 @@ const styles = `
     padding-right: 36px;
   }
 
-  /* ── BUTTON ── */
   .btn-primary {
     width: 100%;
     padding: 13px;
@@ -233,7 +235,6 @@ const styles = `
   .btn-primary:active:not(:disabled) { transform: scale(0.99); }
   .btn-primary:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
 
-  /* ── STATUS ── */
   .status-bar {
     display: flex;
     align-items: center;
@@ -264,7 +265,6 @@ const styles = `
 
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ── RESULTS ── */
   .results-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -284,7 +284,6 @@ const styles = `
 
   @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
 
-  /* ── PROFILE HERO ── */
   .profile-hero {
     padding: 28px 32px;
     border-bottom: 1px solid var(--border);
@@ -360,7 +359,6 @@ const styles = `
   }
   .profile-link:hover { opacity: 1; }
 
-  /* ── STATS STRIP ── */
   .stats-strip {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -397,7 +395,6 @@ const styles = `
     font-family: var(--font-mono);
   }
 
-  /* ── POSTS ── */
   .posts-section { padding: 24px 32px; }
 
   .section-header {
@@ -523,7 +520,6 @@ const styles = `
     font-family: var(--font-mono);
   }
 
-  /* ── EXPORT BAR ── */
   .export-bar {
     display: flex;
     align-items: center;
@@ -597,8 +593,17 @@ export default function App() {
   }
 
   async function startScrape() {
-    const user = username.trim().replace("@", "");
-    if (!user) { setStatus("Enter an Instagram username.", "error"); return; }
+    const user = normalizeUsername(username);
+
+    if (!user) {
+      setStatus("Enter an Instagram username.", "error");
+      return;
+    }
+
+    if (!APIFY_KEY) {
+      setStatus("Missing Apify API key. Check VITE_APIFY_KEY.", "error");
+      return;
+    }
 
     setLoading(true);
     setData(null);
@@ -610,23 +615,37 @@ export default function App() {
       const input = {
         directUrls: [`https://www.instagram.com/${user}/`],
         resultsType: resultType === "profile" ? "details" : "posts",
-        resultsLimit: parseInt(maxPosts),
+        resultsLimit: parseInt(maxPosts, 10),
         addParentData: true,
       };
 
       const runRes = await fetch(
         `https://api.apify.com/v2/acts/${ACTOR_ID}/runs?token=${APIFY_KEY}`,
-        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        },
       );
 
       if (!runRes.ok) {
-        const err = await runRes.json();
-        throw new Error(err.error?.message || "Failed to start actor run");
+        let errMessage = "Failed to start actor run";
+        try {
+          const err = await runRes.json();
+          errMessage = err.error?.message || errMessage;
+        } catch {
+          // ignore JSON parse error
+        }
+        throw new Error(errMessage);
       }
 
       const runData = await runRes.json();
-      const runId = runData.data.id;
-      const dsId = runData.data.defaultDatasetId;
+      const runId = runData?.data?.id;
+      const dsId = runData?.data?.defaultDatasetId;
+
+      if (!runId || !dsId) {
+        throw new Error("Invalid Apify run response.");
+      }
 
       let elapsed = 0;
       let finished = false;
@@ -634,28 +653,66 @@ export default function App() {
       while (elapsed < 300 && !finished && !abortRef.current) {
         await sleep(5000);
         elapsed += 5;
-        setStatus(`Scraping posts... ${elapsed}s elapsed`, "info");
+        setStatus(`Scraping... ${elapsed}s elapsed`, "info");
 
-        const stRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_KEY}`);
+        const stRes = await fetch(
+          `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_KEY}`,
+        );
+
         const stData = await stRes.json();
-        const st = stData.data.status;
+        const st = stData?.data?.status;
 
-        if (st === "SUCCEEDED") finished = true;
-        else if (["FAILED", "ABORTED", "TIMED-OUT"].includes(st)) throw new Error(`Run ${st.toLowerCase()}`);
+        if (st === "SUCCEEDED") {
+          finished = true;
+        } else if (["FAILED", "ABORTED", "TIMED-OUT"].includes(st)) {
+          throw new Error(`Run ${st.toLowerCase()}`);
+        }
       }
 
-      if (!finished) throw new Error("Timed out. Try fewer posts.");
+      if (!finished) {
+        throw new Error("Timed out. Try fewer posts.");
+      }
 
       setStatus("Fetching results...", "info");
-      const itemsRes = await fetch(`https://api.apify.com/v2/datasets/${dsId}/items?token=${APIFY_KEY}&limit=200`);
+
+      const itemsRes = await fetch(
+        `https://api.apify.com/v2/datasets/${dsId}/items?token=${APIFY_KEY}&limit=200`,
+      );
       const items = await itemsRes.json();
+      console.log("Apify first item:", items[0]);
+      console.log("Apify all items:", items);
+      if (!Array.isArray(items) || !items.length) {
+        throw new Error(
+          "No data returned. Account may be private or not found.",
+        );
+      }
 
-      if (!items?.length) throw new Error("No data returned. Account may be private or not found.");
+      const matchingItems = items.filter(
+        (item) => getItemUsername(item) === user,
+      );
 
-      setData(items);
-      setStatus(`Done — fetched ${items.length} item(s) for @${user}.`, "success");
+      if (!matchingItems.length) {
+        const sampleUsernames = [
+          ...new Set(items.map(getItemUsername).filter(Boolean)),
+        ]
+          .slice(0, 5)
+          .map((u) => `@${u}`)
+          .join(", ");
+
+        throw new Error(
+          sampleUsernames
+            ? `Returned data does not match @${user}. Got ${sampleUsernames} instead.`
+            : `Returned data does not match @${user}.`,
+        );
+      }
+
+      setData(matchingItems);
+      setStatus(
+        `Done — fetched ${matchingItems.length} matching item(s) for @${user}.`,
+        "success",
+      );
     } catch (e) {
-      setStatus(e.message, "error");
+      setStatus(e.message || "Something went wrong.", "error");
     } finally {
       setLoading(false);
     }
@@ -665,47 +722,62 @@ export default function App() {
     return (data || []).map((p, i) => {
       const caption = p.caption || p.text || "";
       const tags = extractTags(caption).join(" ");
+
       return {
         "Post #": i + 1,
-        "Type": p.type || "post",
-        "Caption": caption,
-        "Hashtags": tags,
-        "Likes": p.likesCount || p.likes || 0,
-        "Comments": p.commentsCount || p.comments || 0,
-        "Timestamp": p.timestamp || p.takenAtTimestamp || "",
-        "URL": p.url || p.shortCode ? `https://instagram.com/p/${p.shortCode}` : "",
+        Type: p.type || "post",
+        Username: p.username || "",
+        Owner: p.ownerUsername || "",
+        Caption: caption,
+        Hashtags: tags,
+        Likes: p.likesCount || p.likes || 0,
+        Comments: p.commentsCount || p.comments || 0,
         "Video Views": p.videoViewCount || "",
-        "Location": p.locationName || "",
+        Plays: p.videoPlayCount || "", // 🔥 NEW
+        "Duration (sec)": p.videoDuration || "",
+        Timestamp: p.timestamp || p.takenAtTimestamp || "",
+        URL:
+          p.url ||
+          (p.shortCode ? `https://instagram.com/p/${p.shortCode}` : ""),
+        Location: p.locationName || "",
       };
     });
   }
 
   function exportExcel() {
-    if (!data) return;
+    if (!data?.length) return;
+
     const rows = buildRows();
     const ws = XLSX.utils.json_to_sheet(rows);
 
-    // Column widths
     ws["!cols"] = [
-      { wch: 8 }, { wch: 10 }, { wch: 60 }, { wch: 40 },
-      { wch: 12 }, { wch: 12 }, { wch: 20 }, { wch: 40 },
-      { wch: 14 }, { wch: 25 },
+      { wch: 8 },
+      { wch: 10 },
+      { wch: 60 },
+      { wch: 40 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 20 },
+      { wch: 40 },
+      { wch: 14 },
+      { wch: 25 },
     ];
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Posts");
 
-    // Profile summary sheet
-    if (data[0]) {
-      const p = data[0];
+    if (profile) {
       const summaryData = [
-        ["Username", p.ownerUsername || p.username || username],
-        ["Full Name", p.ownerFullName || p.fullName || ""],
-        ["Followers", p.followersCount || p.ownerFollowersCount || ""],
-        ["Following", p.followsCount || p.ownerFollowsCount || ""],
-        ["Total Posts", p.postsCount || p.ownerPostsCount || ""],
-        ["Biography", p.biography || p.ownerBiography || ""],
-        ["Verified", p.verified || p.ownerVerified ? "Yes" : "No"],
+        ["Username", profile.ownerUsername || profile.username || username],
+        ["Full Name", profile.ownerFullName || profile.fullName || ""],
+        [
+          "Followers",
+          profile.followersCount || profile.ownerFollowersCount || "",
+        ],
+        ["Following", profile.followsCount || profile.ownerFollowsCount || ""],
+        ["Total Posts", profile.postsCount || profile.ownerPostsCount || ""],
+        ["Biography", profile.biography || profile.ownerBiography || ""],
+        ["Verified", profile.verified || profile.ownerVerified ? "Yes" : "No"],
         ["Scraped At", new Date().toISOString()],
       ];
       const ws2 = XLSX.utils.aoa_to_sheet(summaryData);
@@ -713,48 +785,78 @@ export default function App() {
       XLSX.utils.book_append_sheet(wb, ws2, "Profile");
     }
 
-    XLSX.writeFile(wb, `instagram_${username.replace("@", "")}_${Date.now()}.xlsx`);
+    XLSX.writeFile(
+      wb,
+      `instagram_${normalizeUsername(username) || "profile"}_${Date.now()}.xlsx`,
+    );
   }
 
   function exportJSON() {
-    if (!data) return;
+    if (!data?.length) return;
     const rows = buildRows();
-    const blob = new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(rows, null, 2)], {
+      type: "application/json",
+    });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `instagram_${username.replace("@", "")}.json`;
+    a.download = `instagram_${normalizeUsername(username) || "profile"}.json`;
     a.click();
   }
 
-  const profile = data?.[0];
-  const profileName = profile?.ownerFullName || profile?.fullName || profile?.username || username;
+  const cleanUser = normalizeUsername(username);
+
+  const profile =
+    (data || []).find((item) => getItemUsername(item) === cleanUser) || null;
+
+  const profileName =
+    profile?.ownerFullName ||
+    profile?.fullName ||
+    profile?.username ||
+    username;
+
   const profileHandle = profile?.ownerUsername || profile?.username || username;
+
   const bio = profile?.biography || profile?.ownerBiography || "";
   const followers = profile?.followersCount || profile?.ownerFollowersCount;
   const following = profile?.followsCount || profile?.ownerFollowsCount;
-  const postsCount = profile?.postsCount || profile?.ownerPostsCount || data?.length;
+  const postsCount =
+    profile?.postsCount || profile?.ownerPostsCount || data?.length || 0;
   const isVerified = profile?.verified || profile?.ownerVerified;
-  const initials = profileName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "IG";
 
-  const posts = (data || []).filter(d => d.type || d.caption !== undefined).slice(0, 9);
+  const initials =
+    profileName
+      ?.split(" ")
+      .map((w) => w[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "IG";
+
+  const posts = (data || [])
+    .filter((item) => {
+      const itemUser = getItemUsername(item);
+      return (
+        itemUser === cleanUser && (item?.type || item?.caption !== undefined)
+      );
+    })
+    .slice(0, 9);
 
   return (
     <>
       <style>{styles}</style>
       <div className="app">
-
         <div className="header">
           <div className="eyebrow">
             <div className="eyebrow-dot" />
             Melange digital
           </div>
           <h1 className="title">
-            Profile &amp; Post<br />
+            Profile &amp; Post
+            <br />
             <span className="title-gradient">Data Scraper</span>
           </h1>
           <p className="subtitle">
-            Fetch public profile data, recent posts, engagement metrics,
-            and hashtags — export to Excel instantly.
+            Fetch public profile data, recent posts, engagement metrics, and
+            hashtags — export to Excel instantly.
           </p>
         </div>
 
@@ -764,36 +866,60 @@ export default function App() {
               <label>Instagram Username</label>
               <input
                 type="text"
-                placeholder="e.g. natgeo  (no @)"
+                placeholder="e.g. natgeo (no @)"
                 value={username}
-                onChange={e => setUsername(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && !loading && startScrape()}
+                onChange={(e) => setUsername(e.target.value)}
+                onKeyDown={(e) =>
+                  e.key === "Enter" && !loading && startScrape()
+                }
               />
             </div>
           </div>
+
           <div className="form-row">
             <div className="field">
               <label>Max Posts</label>
-              <select value={maxPosts} onChange={e => setMaxPosts(e.target.value)}>
+              <select
+                value={maxPosts}
+                onChange={(e) => setMaxPosts(e.target.value)}
+              >
                 <option value="10">10 posts</option>
                 <option value="20">20 posts</option>
                 <option value="50">50 posts</option>
                 <option value="100">100 posts</option>
               </select>
             </div>
+
             <div className="field">
               <label>Scrape Type</label>
-              <select value={resultType} onChange={e => setResultType(e.target.value)}>
+              <select
+                value={resultType}
+                onChange={(e) => setResultType(e.target.value)}
+              >
                 <option value="posts">Posts + Profile</option>
                 <option value="profile">Profile Only</option>
               </select>
             </div>
           </div>
-          <button className="btn-primary" onClick={startScrape} disabled={loading}>
+
+          <button
+            className="btn-primary"
+            onClick={startScrape}
+            disabled={loading}
+          >
             {loading ? (
-              <><div className="spinner" style={{borderTopColor:"#fff",borderColor:"rgba(255,255,255,0.3)"}} /> Scraping...</>
+              <>
+                <div
+                  className="spinner"
+                  style={{
+                    borderTopColor: "#fff",
+                    borderColor: "rgba(255,255,255,0.3)",
+                  }}
+                />
+                Scraping...
+              </>
             ) : (
-              <> → Start Scrape</>
+              <>→ Start Scrape</>
             )}
           </button>
         </div>
@@ -805,17 +931,23 @@ export default function App() {
           </div>
         )}
 
-        {data && (
+        {data && profile && (
           <div className="results-card">
             <div className="profile-hero">
               <div className="avatar-wrap">
                 <div className="avatar">{initials}</div>
                 {isVerified && <div className="verified-dot">✓</div>}
               </div>
+
               <div className="profile-info">
                 <div className="profile-name">{profileName}</div>
                 <div className="profile-handle">@{profileHandle}</div>
-                {bio && <div className="profile-bio">{bio.slice(0, 180)}{bio.length > 180 ? "…" : ""}</div>}
+                {bio && (
+                  <div className="profile-bio">
+                    {bio.slice(0, 180)}
+                    {bio.length > 180 ? "…" : ""}
+                  </div>
+                )}
                 <a
                   className="profile-link"
                   href={`https://instagram.com/${profileHandle}`}
@@ -842,12 +974,13 @@ export default function App() {
               </div>
             </div>
 
-            {posts.length > 0 && (
+            {posts.length > 0 ? (
               <div className="posts-section">
                 <div className="section-header">
                   <span className="section-title">Recent Posts</span>
                   <span className="section-count">{posts.length} shown</span>
                 </div>
+
                 <div className="posts-grid">
                   {posts.map((p, i) => {
                     const caption = p.caption || p.text || "(no caption)";
@@ -855,16 +988,23 @@ export default function App() {
                     const comments = fmt(p.commentsCount || p.comments || 0);
                     const type = p.type || "post";
                     const tags = extractTags(caption);
+
                     return (
                       <div className="post-card" key={i}>
                         <div className="post-num">#{i + 1}</div>
                         <div className="post-type-badge">{type}</div>
                         <div className="post-caption">{caption}</div>
+
                         {tags.length > 0 && (
                           <div className="post-tags">
-                            {tags.map((t, j) => <span className="tag-chip" key={j}>{t}</span>)}
+                            {tags.map((t, j) => (
+                              <span className="tag-chip" key={j}>
+                                {t}
+                              </span>
+                            ))}
                           </div>
                         )}
+
                         <div className="post-meta">
                           <span className="likes">♥ {likes}</span>
                           <span className="comments">💬 {comments}</span>
@@ -874,12 +1014,13 @@ export default function App() {
                   })}
                 </div>
               </div>
-            )}
-
-            {posts.length === 0 && (
+            ) : (
               <div className="posts-section">
                 <div className="posts-grid">
-                  <div className="empty-posts">No post data — try "Posts + Profile" scrape type.</div>
+                  <div className="empty-posts">
+                    No post data for the matched username — try "Posts +
+                    Profile" scrape type.
+                  </div>
                 </div>
               </div>
             )}
