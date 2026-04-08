@@ -19,8 +19,10 @@ function normalizeUsername(value = "") {
   return value.trim().replace("@", "").toLowerCase();
 }
 
+// For profile matching, prefer the profile username first.
+// This keeps collab posts/reels that appear on the searched profile.
 function getItemUsername(item) {
-  return normalizeUsername(item?.ownerUsername || item?.username || "");
+  return normalizeUsername(item?.username || item?.ownerUsername || "");
 }
 
 const styles = `
@@ -503,11 +505,13 @@ const styles = `
     font-size: 11px;
     font-family: var(--font-mono);
     color: var(--muted);
+    flex-wrap: wrap;
   }
 
   .post-meta span { display: flex; align-items: center; gap: 4px; }
   .post-meta .likes { color: #ff7eb3; }
   .post-meta .comments { color: #7eb8ff; }
+  .post-meta .views { color: #7cf3c3; }
 
   .empty-posts {
     grid-column: 1/-1;
@@ -527,6 +531,7 @@ const styles = `
     padding: 18px 32px;
     border-top: 1px solid var(--border);
     background: var(--surface2);
+    flex-wrap: wrap;
   }
 
   .export-label {
@@ -625,7 +630,7 @@ export default function App() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(input),
-        },
+        }
       );
 
       if (!runRes.ok) {
@@ -656,7 +661,7 @@ export default function App() {
         setStatus(`Scraping... ${elapsed}s elapsed`, "info");
 
         const stRes = await fetch(
-          `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_KEY}`,
+          `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_KEY}`
         );
 
         const stData = await stRes.json();
@@ -676,25 +681,21 @@ export default function App() {
       setStatus("Fetching results...", "info");
 
       const itemsRes = await fetch(
-        `https://api.apify.com/v2/datasets/${dsId}/items?token=${APIFY_KEY}&limit=200`,
+        `https://api.apify.com/v2/datasets/${dsId}/items?token=${APIFY_KEY}&limit=200`
       );
       const items = await itemsRes.json();
+
       console.log("Apify first item:", items[0]);
       console.log("Apify all items:", items);
+
       if (!Array.isArray(items) || !items.length) {
-        throw new Error(
-          "No data returned. Account may be private or not found.",
-        );
+        throw new Error("No data returned. Account may be private or not found.");
       }
 
-      const matchingItems = items.filter(
-        (item) => getItemUsername(item) === user,
-      );
+      const matchingItems = items.filter((item) => getItemUsername(item) === user);
 
       if (!matchingItems.length) {
-        const sampleUsernames = [
-          ...new Set(items.map(getItemUsername).filter(Boolean)),
-        ]
+        const sampleUsernames = [...new Set(items.map(getItemUsername).filter(Boolean))]
           .slice(0, 5)
           .map((u) => `@${u}`)
           .join(", ");
@@ -702,14 +703,14 @@ export default function App() {
         throw new Error(
           sampleUsernames
             ? `Returned data does not match @${user}. Got ${sampleUsernames} instead.`
-            : `Returned data does not match @${user}.`,
+            : `Returned data does not match @${user}.`
         );
       }
 
       setData(matchingItems);
       setStatus(
         `Done — fetched ${matchingItems.length} matching item(s) for @${user}.`,
-        "success",
+        "success"
       );
     } catch (e) {
       setStatus(e.message || "Something went wrong.", "error");
@@ -728,21 +729,25 @@ export default function App() {
         Type: p.type || "post",
         Username: p.username || "",
         Owner: p.ownerUsername || "",
+        "Is Collab Post": p.ownerUsername && p.username && p.ownerUsername !== p.username ? "Yes" : "No",
         Caption: caption,
         Hashtags: tags,
         Likes: p.likesCount || p.likes || 0,
         Comments: p.commentsCount || p.comments || 0,
         "Video Views": p.videoViewCount || "",
-        Plays: p.videoPlayCount || "", // 🔥 NEW
+        Plays: p.videoPlayCount || "",
         "Duration (sec)": p.videoDuration || "",
         Timestamp: p.timestamp || p.takenAtTimestamp || "",
-        URL:
-          p.url ||
-          (p.shortCode ? `https://instagram.com/p/${p.shortCode}` : ""),
+        URL: p.url || (p.shortCode ? `https://instagram.com/p/${p.shortCode}` : ""),
         Location: p.locationName || "",
       };
     });
   }
+
+  const cleanUser = normalizeUsername(username);
+
+  const profile =
+    (data || []).find((item) => getItemUsername(item) === cleanUser) || null;
 
   function exportExcel() {
     if (!data?.length) return;
@@ -752,15 +757,20 @@ export default function App() {
 
     ws["!cols"] = [
       { wch: 8 },
-      { wch: 10 },
-      { wch: 60 },
-      { wch: 40 },
-      { wch: 12 },
       { wch: 12 },
       { wch: 20 },
-      { wch: 40 },
+      { wch: 20 },
       { wch: 14 },
-      { wch: 25 },
+      { wch: 60 },
+      { wch: 24 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 22 },
+      { wch: 40 },
+      { wch: 20 },
     ];
 
     const wb = XLSX.utils.book_new();
@@ -768,26 +778,25 @@ export default function App() {
 
     if (profile) {
       const summaryData = [
-        ["Username", profile.ownerUsername || profile.username || username],
-        ["Full Name", profile.ownerFullName || profile.fullName || ""],
-        [
-          "Followers",
-          profile.followersCount || profile.ownerFollowersCount || "",
-        ],
+        ["Username", profile.username || profile.ownerUsername || username],
+        ["Full Name", profile.fullName || profile.ownerFullName || ""],
+        ["Followers", profile.followersCount || profile.ownerFollowersCount || ""],
         ["Following", profile.followsCount || profile.ownerFollowsCount || ""],
         ["Total Posts", profile.postsCount || profile.ownerPostsCount || ""],
         ["Biography", profile.biography || profile.ownerBiography || ""],
         ["Verified", profile.verified || profile.ownerVerified ? "Yes" : "No"],
+        ["Business Category", profile.businessCategoryName || ""],
+        ["External URL", profile.externalUrl || ""],
         ["Scraped At", new Date().toISOString()],
       ];
       const ws2 = XLSX.utils.aoa_to_sheet(summaryData);
-      ws2["!cols"] = [{ wch: 15 }, { wch: 60 }];
+      ws2["!cols"] = [{ wch: 18 }, { wch: 70 }];
       XLSX.utils.book_append_sheet(wb, ws2, "Profile");
     }
 
     XLSX.writeFile(
       wb,
-      `instagram_${normalizeUsername(username) || "profile"}_${Date.now()}.xlsx`,
+      `instagram_${normalizeUsername(username) || "profile"}_${Date.now()}.xlsx`
     );
   }
 
@@ -803,18 +812,16 @@ export default function App() {
     a.click();
   }
 
-  const cleanUser = normalizeUsername(username);
-
-  const profile =
-    (data || []).find((item) => getItemUsername(item) === cleanUser) || null;
-
   const profileName =
-    profile?.ownerFullName ||
     profile?.fullName ||
+    profile?.ownerFullName ||
     profile?.username ||
     username;
 
-  const profileHandle = profile?.ownerUsername || profile?.username || username;
+  const profileHandle =
+    profile?.username ||
+    profile?.ownerUsername ||
+    username;
 
   const bio = profile?.biography || profile?.ownerBiography || "";
   const followers = profile?.followersCount || profile?.ownerFollowersCount;
@@ -834,9 +841,7 @@ export default function App() {
   const posts = (data || [])
     .filter((item) => {
       const itemUser = getItemUsername(item);
-      return (
-        itemUser === cleanUser && (item?.type || item?.caption !== undefined)
-      );
+      return itemUser === cleanUser && (item?.type || item?.caption !== undefined);
     })
     .slice(0, 9);
 
@@ -869,9 +874,7 @@ export default function App() {
                 placeholder="e.g. natgeo (no @)"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                onKeyDown={(e) =>
-                  e.key === "Enter" && !loading && startScrape()
-                }
+                onKeyDown={(e) => e.key === "Enter" && !loading && startScrape()}
               />
             </div>
           </div>
@@ -986,6 +989,7 @@ export default function App() {
                     const caption = p.caption || p.text || "(no caption)";
                     const likes = fmt(p.likesCount || p.likes || 0);
                     const comments = fmt(p.commentsCount || p.comments || 0);
+                    const views = fmt(p.videoViewCount || p.videoPlayCount || 0);
                     const type = p.type || "post";
                     const tags = extractTags(caption);
 
@@ -1008,6 +1012,9 @@ export default function App() {
                         <div className="post-meta">
                           <span className="likes">♥ {likes}</span>
                           <span className="comments">💬 {comments}</span>
+                          {!!(p.videoViewCount || p.videoPlayCount) && (
+                            <span className="views">▶ {views}</span>
+                          )}
                         </div>
                       </div>
                     );
@@ -1018,8 +1025,7 @@ export default function App() {
               <div className="posts-section">
                 <div className="posts-grid">
                   <div className="empty-posts">
-                    No post data for the matched username — try "Posts +
-                    Profile" scrape type.
+                    No post data for the matched username — try "Posts + Profile" scrape type.
                   </div>
                 </div>
               </div>
