@@ -1,7 +1,5 @@
 import { useState } from "react";
-
-// Goes through Vite proxy → key stays in .env, never in the browser
-const CLAUDE_ENDPOINT = "/api/claude";
+import { claudeFetch } from "../lib/claudeFetch";
 
 const toN = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const fmt = (n) => {
@@ -84,14 +82,10 @@ export default function AIInsights({ posts = [], profile = null }) {
     if (!posts.length) return;
     setLoading(true); setInsights(null); setError(null);
     try {
-      const res = await fetch(CLAUDE_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1200,
-          messages: [{ role: "user", content: buildPrompt(posts, profile) }],
-        }),
+      const res = await claudeFetch({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1200,
+        messages: [{ role: "user", content: buildPrompt(posts, profile) }],
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -173,7 +167,6 @@ export default function AIInsights({ posts = [], profile = null }) {
               <InsightSection key={s.key} title={s.title} content={insights[s.key]} accent={s.accent} />
             ))}
           </div>
-
           {insights.wins && (
             <div className="card" style={{ padding: "22px 26px", borderTop: "3px solid var(--v)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
@@ -183,7 +176,6 @@ export default function AIInsights({ posts = [], profile = null }) {
               <div style={{ fontSize: 14, color: "var(--ink)", lineHeight: 1.9 }}>{insights.wins}</div>
             </div>
           )}
-
           <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
             <button className="btn-sm" onClick={generate} disabled={loading}>
               {loading ? "Regenerating…" : "↻ Regenerate"}

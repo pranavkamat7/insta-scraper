@@ -6,8 +6,15 @@ export default defineConfig(({ mode }) => {
 
   console.log("🔑 ANTHROPIC_API_KEY loaded:", env.ANTHROPIC_API_KEY ? "YES ✓" : "MISSING ✗");
 
+  const isDev = mode === "development";
+
   return {
     plugins: [react()],
+    // Expose ANTHROPIC_API_KEY to the client ONLY in production
+    // (in dev, the proxy handles it securely)
+    define: isDev ? {} : {
+      "import.meta.env.ANTHROPIC_API_KEY": JSON.stringify(env.ANTHROPIC_API_KEY),
+    },
     server: {
       proxy: {
         "/api/claude": {
@@ -17,18 +24,14 @@ export default defineConfig(({ mode }) => {
           rewrite: () => "/v1/messages",
           configure: (proxy) => {
             proxy.on("proxyReq", (proxyReq) => {
-              // Remove ALL browser-set headers that Anthropic rejects
               proxyReq.removeHeader("anthropic-dangerous-direct-browser-access");
               proxyReq.removeHeader("origin");
               proxyReq.removeHeader("referer");
-
-              // Set the correct auth headers
               proxyReq.setHeader("x-api-key", env.ANTHROPIC_API_KEY);
               proxyReq.setHeader("anthropic-version", "2023-06-01");
               proxyReq.setHeader("content-type", "application/json");
             });
             proxy.on("proxyRes", (proxyRes) => {
-              // Allow the browser to read the response
               proxyRes.headers["access-control-allow-origin"] = "*";
             });
             proxy.on("error", (err) => {
