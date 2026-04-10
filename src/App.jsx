@@ -53,7 +53,7 @@ const NAV = [
         <path d="M3 5h9M3 10h9M6 1.5v12M9 1.5v12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
       </svg>
     ),
-    badge: "New",
+    badge: "",
   },
   {
     id: "reels",
@@ -64,7 +64,7 @@ const NAV = [
         <path d="M2.5 3.5l10 4-10 4V3.5z" fill="currentColor"/>
       </svg>
     ),
-    badge: "New",
+    badge: "AI",
   },
   {
     id: "compare",
@@ -77,7 +77,7 @@ const NAV = [
         <rect x="10" y="5" width="3.5" height="7" rx="1" fill="currentColor"/>
       </svg>
     ),
-    badge: "New",
+    badge: "",
   },
   {
     id: "heatmap",
