@@ -5,6 +5,7 @@ import TrendingReels from "./components/TrendingReels";
 import CompetitorCompare from "./components/CompetitorCompare";
 import PostingHeatmap from "./components/PostingHeatmap";
 import AIInsights from "./components/AIInsights";
+import StoriesScraper from "./components/StoriesScraper"; // ← new
 
 const ACTOR_ID = "apify~instagram-scraper";
 const APIFY_KEY = import.meta.env.VITE_APIFY_KEY;
@@ -29,13 +30,15 @@ const calcM = (post, f) => {
   return { likes, comments, views, interactions, erByFollowers: f > 0 ? (interactions / f) * 100 : 0, erByViews: views > 0 ? (interactions / views) * 100 : 0 };
 };
 
+// ── Nav: added "stories" entry ────────────────────────────────────────────────
 const NAV = [
-  { id: "scraper",  label: "Profile Scraper",  badge: null },
+  { id: "scraper",  label: "Profile Scraper",  badge: null  },
+  { id: "stories",  label: "Stories Scraper",  badge: "New" }, // ← new
   { id: "hashtags", label: "Hashtag Explorer", badge: "New" },
   { id: "reels",    label: "Trending Reels",   badge: "New" },
   { id: "compare",  label: "Compare Accounts", badge: "New" },
-  { id: "heatmap",  label: "Posting Heatmap",  badge: null },
-  { id: "ai",       label: "AI Insights",      badge: "AI" },
+  { id: "heatmap",  label: "Posting Heatmap",  badge: null  },
+  { id: "ai",       label: "AI Insights",      badge: "AI"  },
 ];
 
 const G = `
@@ -106,7 +109,7 @@ input:focus,select:focus{outline:none!important;border-color:var(--accent)!impor
 .live-badge{display:flex;align-items:center;gap:5px;font-size:9px;font-family:var(--mono);color:var(--accent);font-weight:600;letter-spacing:.06em;background:var(--accent-pale);border:1px solid var(--accent-border);padding:3px 9px;border-radius:99px}
 .live-dot{width:5px;height:5px;border-radius:50%;background:var(--accent);animation:blink 1.2s ease infinite}
 
-/* Form layout: username full width, then dropdowns + button in a row */
+/* Form layout */
 .form-username{margin-bottom:12px}
 .form-row{display:flex;gap:10px;align-items:flex-end}
 .form-field{display:flex;flex-direction:column;gap:5px}
@@ -238,6 +241,7 @@ input:focus,select:focus{outline:none!important;border-color:var(--accent)!impor
 const NavIcon = ({ id }) => {
   const p = {
     scraper:  <><rect x="1.5" y="1.5" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="1.4"/><circle cx="7.5" cy="7.5" r="2.5" stroke="currentColor" strokeWidth="1.4"/><circle cx="11" cy="4" r="1" fill="currentColor"/></>,
+    stories:  <><rect x="1.5" y="1.5" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="1.4"/><path d="M5 5.5h5M5 7.5h5M5 9.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><circle cx="11.5" cy="3.5" r="1.5" fill="currentColor" opacity=".7"/></>, // ← stories icon
     hashtags: <path d="M3 5h9M3 10h9M6 1.5v12M9 1.5v12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>,
     reels:    <path d="M2.5 3.5l10 4-10 4V3.5z" fill="currentColor"/>,
     compare:  <><rect x="1.5" y="4" width="3.5" height="8" rx="1" fill="currentColor" opacity=".3"/><rect x="5.75" y="2" width="3.5" height="10" rx="1" fill="currentColor" opacity=".65"/><rect x="10" y="5" width="3.5" height="7" rx="1" fill="currentColor"/></>,
@@ -451,13 +455,11 @@ function ProfileScraper({ onDataScraped }) {
 
   return (
     <div>
-      {/* 1. Page title */}
       <div className="page-head">
         <h1 className="page-title">Instagram <span>analytics</span></h1>
         <p className="page-desc">Pull real data from any public profile. Posts, engagement rates, collab detection — export clean reports instantly.</p>
       </div>
 
-      {/* 2. Scrape form card */}
       <div className="scrape-card">
         <div className="scrape-card-head">
           <div>
@@ -467,7 +469,6 @@ function ProfileScraper({ onDataScraped }) {
           {loading && <div className="live-badge"><div className="live-dot" />LIVE</div>}
         </div>
 
-        {/* Username — full width */}
         <div className="form-username">
           <label className="field-label" style={{ display: "block", marginBottom: 6 }}>Username</label>
           <input
@@ -479,7 +480,6 @@ function ProfileScraper({ onDataScraped }) {
           />
         </div>
 
-        {/* Dropdowns + button in a row */}
         <div className="form-row">
           <div className="form-field">
             <label className="field-label">Max posts</label>
@@ -508,7 +508,6 @@ function ProfileScraper({ onDataScraped }) {
         </div>
       </div>
 
-      {/* 3. Status */}
       {statusMsg && (
         <div className="status-bar aup" style={{ background: stStyle.bg, color: stStyle.ink, borderColor: stStyle.border }}>
           {loading && <div className="spin-a" style={{ borderTopColor: stStyle.ink }} />}
@@ -517,10 +516,8 @@ function ProfileScraper({ onDataScraped }) {
         </div>
       )}
 
-      {/* 4. Results */}
       {profile && (
         <div className="aup">
-          {/* Metric cards */}
           <div className="metrics-row">
             <div className="mcard hi"><div className="mcard-lbl">Followers</div><div className="mcard-val">{fmt(followers)}</div><div className="mcard-sub">Public count</div></div>
             <div className="mcard hi"><div className="mcard-lbl">Avg ER</div><div className="mcard-val">{pct(A.erF)}</div><div className="mcard-sub">By followers</div></div>
@@ -529,12 +526,10 @@ function ProfileScraper({ onDataScraped }) {
             <div className="mcard"><div className="mcard-lbl">Collab rate</div><div className="mcard-val">{pct(A.collabRate)}</div><div className="mcard-sub">Of posts</div></div>
           </div>
 
-          {/* Tabs */}
           <div className="tabs-bar">
             {TABS.map(t => <button key={t.id} className={`tab${tab === t.id ? " on" : ""}`} onClick={() => setTab(t.id)}>{t.label}</button>)}
           </div>
 
-          {/* Overview */}
           {tab === "overview" && (
             <div>
               <div className="profile-card">
@@ -576,7 +571,6 @@ function ProfileScraper({ onDataScraped }) {
             </div>
           )}
 
-          {/* Posts */}
           {tab === "posts" && (
             <div>
               <div className="filters">
@@ -594,7 +588,6 @@ function ProfileScraper({ onDataScraped }) {
             </div>
           )}
 
-          {/* Export */}
           {tab === "export" && (
             <div className="export-grid">
               <div className="ecard">
@@ -646,6 +639,7 @@ export default function App() {
         <Sidebar active={section} onNav={setSection} />
         <main className="main">
           {section === "scraper"  && <ProfileScraper onDataScraped={handleDataScraped} />}
+          {section === "stories"  && <StoriesScraper />}
           {section === "hashtags" && <HashtagExplorer />}
           {section === "reels"    && <TrendingReels />}
           {section === "compare"  && <CompetitorCompare />}
