@@ -7,6 +7,7 @@ import PostingHeatmap from "./components/PostingHeatmap";
 import AIInsights from "./components/AIInsights";
 import StoriesScraper from "./components/StoriesScraper"; // ← new
 import CommentScraper from "./components/CommentScraper";
+import ForbesScraper from "./components/ForbesScraper";
 
 const ACTOR_ID = "apify~instagram-scraper";
 const APIFY_KEY = import.meta.env.VITE_APIFY_KEY;
@@ -41,6 +42,7 @@ const NAV = [
   { id: "heatmap",  label: "Posting Heatmap",  badge: null  },
   { id: "ai",       label: "AI Insights",      badge: "AI"  },
   { id: "comments", label: "Comment Scraper", badge: "New" },
+  { id: "forbes", label: "Forbes Scraper", badge: "New" },
 ];
 
 const G = `
@@ -251,6 +253,8 @@ const NavIcon = ({ id }) => {
     ai:       <><path d="M7.5 2a5.5 5.5 0 100 11A5.5 5.5 0 007.5 2z" stroke="currentColor" strokeWidth="1.4"/><path d="M5.5 8.5s.9 1.5 2 1.5 2-1.5 2-1.5M5.75 6h.01M9.25 6h.01" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></>,
     comments: <><rect x="1.5" y="1.5" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="1.4"/><path d="M5 5.5h5M5 7.5h5M5 9.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><circle cx="11.5" cy="3.5" r="1.5" fill="currentColor" opacity=".7"/></>,
     comments: <><rect x="1.5" y="1.5" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="1.4"/><path d="M4 5h7M4 7.5h7M4 10h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></>,
+  forbes: <><rect x="1.5" y="1.5" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.3"/><path d="M4 5h7M4 7.5h7M4 10h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><path d="M10 9l2 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><circle cx="11" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.2"/></>,
+
   };
   return <svg width="15" height="15" viewBox="0 0 15 15" fill="none">{p[id]}</svg>;
 };
@@ -650,6 +654,7 @@ export default function App() {
           {section === "heatmap"  && <PostingHeatmap posts={scrapedPosts} followers={followers} />}
           {section === "ai"       && <AIInsights posts={scrapedPosts} profile={scrapedProfile} />}
           {section === "comments" && <CommentScraper />}
+          {section === "forbes"   && <ForbesScraper />}
         </main>
       </div>
     </>
